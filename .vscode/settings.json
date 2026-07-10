@@ -4,7 +4,7 @@
   "idf.openOcdConfigs": [
     "board/esp32c3-builtin.cfg"
   ],
-  "idf.portWin": "detect",
+  "idf.portWin": "COM14",
   "idf.currentSetup": "D:\\esp\\.espressif\\v5.5.4\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c3"
@@ -14,5 +14,6 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=d:\\esp_projects\\fota_transtrack_task\\build"
-  ]
+  ],
+  "idf.flashType": "UART"
 }
