@@ -12,11 +12,90 @@
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_system.h"
+#include "wifi_ble_provisioning.h"
+#include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "nvs_flash.h"
+#include "esp_timer.h"
+#include "driver/gpio.h"
+#include "boardled.h"
+
+#include "config_portal_ap.h"
+
+// Forward declarations of your custom functions
+void run_factory_logic(void);
+void run_ota_logic(void);
+
+static const char *TAG = "MAIN_APP";
+#define BOOT_BUTTON_PIN   9
+#define ESP_INTR_FLAG_DEFAULT 0
+#define BLINK_GPIO 2
+
+static QueueHandle_t gpio_evt_queue = NULL;
+static volatile uint8_t is_reset_button_pressed = 0;
+static volatile int64_t button_press_start_time = 0;
+typedef struct {
+    uint32_t pin;
+    int level;
+    int64_t timestamp;
+} gpio_evt_t;
+
+static void IRAM_ATTR gpio_isr_handler(void* arg) {
+    uint32_t gpio_num = (uint32_t) arg;
+    // ESP_LOGI(TAG, "GPIO %d Interrupt Triggered!", gpio_num);
+
+    // xQueueSendFromISR(gpio_evt_queue, &evt, NULL);
+    if (!is_reset_button_pressed) {
+        is_reset_button_pressed = 1;
+        button_press_start_time = esp_timer_get_time();
+    }
+}
+
+void reset_factory_task () {
+    gpio_config_t io_conf = {
+        .intr_type = GPIO_INTR_ANYEDGE,
+        .mode = GPIO_MODE_INPUT,
+        .pin_bit_mask = (1ULL << BOOT_BUTTON_PIN),
+        .pull_down_en = 0,
+        .pull_up_en = 1
+    };
+    gpio_config(&io_conf);
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+
+    gpio_isr_handler_add(BOOT_BUTTON_PIN, gpio_isr_handler, (void*) BOOT_BUTTON_PIN);
+    int64_t current_time = 0;
+    int64_t end_time = 0;
+    gpio_evt_t evt;
+    while (1) {
+        if (is_reset_button_pressed) {
+            current_time = esp_timer_get_time();
+            ESP_LOGI(TAG, "Factory Reset Button Pressed!");
+            if(gpio_get_level(BOOT_BUTTON_PIN) == 0) {
+                if ((current_time - button_press_start_time) >= 5000000) {
+                    nvs_flash_erase();
+                    gpio_set_level(BLINK_GPIO, 0);
+                    esp_restart();
+                }
+            } else {
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+
+                if (gpio_get_level(BOOT_BUTTON_PIN) == 1) {
+                    if((current_time - button_press_start_time) >= 100000) {
+                        ESP_LOGI(TAG, "Factory Reset Button Released after %lld seconds!", (current_time - button_press_start_time)/1000000);
+                    }
+                    is_reset_button_pressed = 0;
+                } 
+            }
+        } 
+
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+}
 
 void app_main(void)
 {
-    printf("Hello world!\n");
-
     /* Print chip information */
     esp_chip_info_t chip_info;
     uint32_t flash_size;
@@ -42,11 +121,71 @@ void app_main(void)
 
     printf("Minimum free heap size: %" PRIu32 " bytes\n", esp_get_minimum_free_heap_size());
 
-    for (int i = 10; i >= 0; i--) {
-        printf("Restarting in %d seconds...\n", i);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-    printf("Restarting now.\n");
+    ESP_LOGI(TAG, "Restarting now.");
     fflush(stdout);
-    esp_restart();
+
+    // 1. Get the currently running partition details
+    const esp_partition_t *running_partition = esp_ota_get_running_partition();
+    
+    ESP_LOGI(TAG, "Running from partition: %s", running_partition->label);
+
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    xTaskCreatePinnedToCore(
+        &reset_factory_task, 
+        "reset_factory_task", 
+        2048, 
+        NULL, 
+        5, 
+        NULL,
+        0
+    );
+
+    // 2. Differentiate behavior based on subtype
+    if (running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_FACTORY) {
+        ESP_LOGW(TAG, "SYSTEM STARTED IN FACTORY MODE");
+        run_factory_logic();
+    } 
+    else if (running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0 || 
+             running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_1) {
+        ESP_LOGI(TAG, "SYSTEM STARTED IN PRODUCTION (OTA) MODE");
+        run_ota_logic();
+    } 
+    else {
+        ESP_LOGE(TAG, "Unexpected partition subtype: %d", running_partition->subtype);
+    }
+
+    // esp_restart();
+
+    // start_wifi_provisioning();
+}
+
+void run_factory_logic(void) {
+    ESP_LOGI(TAG, "Initializing softAP / Provisioning mode...");
+    // 1. Start Wi-Fi in Access Point (SoftAP) mode
+    // 2. Launch an HTTP server to receive Wi-Fi credentials and new OTA firmware
+    // 3. Keep a GPIO interrupt active for factory exit/reset conditions
+    ota_engine_init_portal();
+
+    while(1) {
+        // Factory loop logic
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+void run_ota_logic(void) {
+    ESP_LOGI(TAG, "Running OTA logic...");
+    // 1. Check for available OTA updates
+    // 2. Download and install updates if available
+    // 3. Reboot if necessary
+
+    while(1) {
+        // OTA loop logic
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
