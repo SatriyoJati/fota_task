@@ -6,6 +6,7 @@ typedef struct {
     char version[32];       // Embedded Firmware Version
     char partition[16];     // Active Partition Label (e.g., "factory", "ota_0")
     char last_boot[48];   // Self-diagnostic boot result or rollback status
+    char roll_back_reason[64]; // Reason for rollback if applicable
 } my_ota_status_t;
 
 void check_active_firmware(void);

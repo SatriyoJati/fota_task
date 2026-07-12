@@ -165,6 +165,24 @@ static esp_err_t trigger_ota_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t status_get_handler(httpd_req_t *req) {
+    my_ota_status_t sys_status;
+    
+    if (my_ota_get_system_status(&sys_status) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Telemetry Error");
+        return ESP_FAIL;
+    }
+
+    char json_response[512]; 
+    snprintf(json_response, sizeof(json_response),
+             "{\"version\":\"%s\",\"partition\":\"%s\",\"boot_reason\":\"%s\",\"rollback_reason\":\"%s\"}",
+             sys_status.version, sys_status.partition, sys_status.last_boot, sys_status.roll_back_reason);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_response);
+    return ESP_OK;
+}
+
 /* Component Core Activation Portal Sequence */
 void ota_engine_init_portal(void)
 {
@@ -237,9 +255,13 @@ void ota_engine_init_portal(void)
 
         httpd_uri_t ota_uri = { .uri = "/api/ota", .method = HTTP_POST, .handler = trigger_ota_post_handler };
         httpd_register_uri_handler(server, &ota_uri);
+
+        httpd_uri_t status_uri = { .uri = "/api/status", .method = HTTP_GET, .handler = status_get_handler };
+        httpd_register_uri_handler(server, &status_uri);
         ESP_LOGI(TAG, "HTTP Server active on http://192.168.4.1");
     }
 
     // 3. Process checking structural key database configurations on bootup 
     load_credentials_and_connect();
 }
+
