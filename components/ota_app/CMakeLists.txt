@@ -4,4 +4,7 @@ idf_component_register(SRCS "ota_app.c"
                         esp_http_client 
                         esp_https_ota 
                         nvs_flash
-                        esp_wifi)
+                        esp_wifi
+                        spi_flash
+                    EMBED_TXTFILES "certs/ota_chaos_cert.pem"    
+                    )
