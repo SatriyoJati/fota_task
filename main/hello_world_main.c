@@ -21,6 +21,7 @@
 #include "esp_timer.h"
 #include "driver/gpio.h"
 #include "boardled.h"
+#include "ota_app.h"
 
 #include "config_portal_ap.h"
 
@@ -53,6 +54,57 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
     }
 }
 
+void verify_system_partitions_and_ota_data(void) {
+    ESP_LOGI("VERIFY", "==================================================");
+    ESP_LOGI("VERIFY", "     RUNNING RUNTIME PARTITION MAP DIAGNOSTICS      ");
+    ESP_LOGI("VERIFY", "==================================================");
+
+    // 1. Check if the 'otadata' control sector exists in Flash
+    const esp_partition_t *otadata = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, 
+        ESP_PARTITION_SUBTYPE_DATA_OTA, 
+        NULL
+    );
+
+    if (otadata == NULL) {
+        ESP_LOGE("VERIFY", "CRITICAL ERROR: 'otadata' partition is MISSING from your table layout!");
+        ESP_LOGE("VERIFY", "Without an 'otadata' slot, the ESP32 can NEVER switch boot apps.");
+        ESP_LOGW("VERIFY", "Fix: Run 'idf.py menuconfig' -> 'Partition Table' -> select 'Factory app, two OTA definitions'.");
+    } else {
+        ESP_LOGI("VERIFY", "✅ Checked 'otadata': Found at address 0x%08X (Size: %d bytes)", 
+                 (unsigned int)otadata->address, (int)otadata->size);
+    }
+
+    // 2. Scan and print all available App Slots
+    esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, NULL);
+    int app_slots_found = 0;
+    
+    while (it != NULL) {
+        const esp_partition_t *part = esp_partition_get(it);
+        ESP_LOGI("VERIFY", "Found App Slot -> Label: '%s' | Subtype: 0x%02X | Size: %d bytes", 
+                 part->label, part->subtype, (int)part->size);
+        app_slots_found++;
+        it = esp_partition_next(it);
+    }
+    esp_partition_iterator_release(it);
+
+    if (app_slots_found < 3) {
+        ESP_LOGW("VERIFY", "WARNING: You only have %d app slots. Standard OTA requires at least 3 (factory, ota_0, ota_1).", app_slots_found);
+    }
+
+    // 3. Track Current Execution Environment vs Targets
+    const esp_partition_t *configured = esp_ota_get_boot_partition();
+    const esp_partition_t *running    = esp_ota_get_running_partition();
+    const esp_partition_t *next_target= esp_ota_get_next_update_partition(NULL);
+
+    ESP_LOGI("VERIFY", "--------------------------------------------------");
+    ESP_LOGI("VERIFY", "Active Partition Layout Tracker Status:");
+    ESP_LOGI("VERIFY", " - Currently Executing From Slot: %s", running ? running->label : "NULL");
+    ESP_LOGI("VERIFY", " - Stored Target in Bootloader:   %s", configured ? configured->label : "NULL");
+    ESP_LOGI("VERIFY", " - Next Staging Download Slot:    %s", next_target ? next_target->label : "NULL");
+    ESP_LOGI("VERIFY", "==================================================");
+}
+
 void reset_factory_task () {
     gpio_config_t io_conf = {
         .intr_type = GPIO_INTR_ANYEDGE,
@@ -71,12 +123,12 @@ void reset_factory_task () {
     while (1) {
         if (is_reset_button_pressed) {
             current_time = esp_timer_get_time();
-            ESP_LOGI(TAG, "Factory Reset Button Pressed!");
             if(gpio_get_level(BOOT_BUTTON_PIN) == 0) {
                 if ((current_time - button_press_start_time) >= 5000000) {
-                    nvs_flash_erase();
-                    gpio_set_level(BLINK_GPIO, 0);
-                    esp_restart();
+                    ESP_LOGI(TAG, "Factory Reset Button Pressed!");
+                    ESP_LOGI(TAG, "Starting Factory Reset...");
+                    gpio_set_level(BLINK_GPIO, 1);
+                    trigger_factory_reset();
                 }
             } else {
                 vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -121,13 +173,14 @@ void app_main(void)
 
     printf("Minimum free heap size: %" PRIu32 " bytes\n", esp_get_minimum_free_heap_size());
 
-    ESP_LOGI(TAG, "Restarting now.");
     fflush(stdout);
 
     // 1. Get the currently running partition details
     const esp_partition_t *running_partition = esp_ota_get_running_partition();
-    
     ESP_LOGI(TAG, "Running from partition: %s", running_partition->label);
+
+    const esp_partition_t *configured = esp_ota_get_boot_partition();
+    ESP_LOGI("BOOT_CHECK", "Configured Boot Slot: %s", configured ? configured->label : "NULL");
 
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -135,11 +188,12 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    verify_system_partitions_and_ota_data();
 
     xTaskCreatePinnedToCore(
         &reset_factory_task, 
         "reset_factory_task", 
-        2048, 
+        4096 , 
         NULL, 
         5, 
         NULL,

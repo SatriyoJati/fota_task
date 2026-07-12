@@ -14,10 +14,36 @@
         button.danger { background: #dc3545; }
         button.danger:hover { background: #bb2d3b; }
         .log-txt { font-weight: 600; margin-top: 12px; color: #6c757d; font-size: 14px; }
+        /* Style for new status grid */
+        .status-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+        .status-label { color: #6c757d; font-weight: 500; }
+        .status-val { font-weight: bold; color: #212529; }
     </style>
 </head>
 <body>
     <h2>Device Configuration Hub</h2>
+
+    <!-- NEW SECTION: SYSTEM STATUS -->
+    <div class="box">
+        <h3>System Status</h3>
+        <div class="status-row">
+            <span class="status-label">Current Firmware:</span>
+            <span id="firmwareVersion" class="status-val">Loading...</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Active Partition:</span>
+            <span id="runningPartition" class="status-val">Loading...</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Last Boot Reason:</span>
+            <span id="lastBootReason" class="status-val">Loading...</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Recovery Reason:</span>
+            <span id="recoveryReason" class="status-val">Loading...</span>
+        </div>
+
+    </div>
 
     <!-- SECTION A: WIRELESS PROVISIONING -->
     <div class="box">
@@ -40,6 +66,26 @@
     </div>
 
     <script>
+        // Fetch status data immediately on window load
+        window.addEventListener('DOMContentLoaded', fetchSystemStatus);
+
+        function fetchSystemStatus() {
+            fetch('/api/status')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('firmwareVersion').innerText = data.version;
+                document.getElementById('runningPartition').innerText = data.partition;
+                document.getElementById('lastBootReason').innerText = data.boot_reason;
+                document.getElementById('recoveryReason').innerText = data.rollback_reason;
+            })
+            .catch(() => {
+                document.getElementById('firmwareVersion').innerText = "Err";
+                document.getElementById('runningPartition').innerText = "Err";
+                document.getElementById('lastBootReason').innerText = "Err";
+                document.getElementById('recoveryReason').innerText = "Err";
+            });
+        }
+
         function commitWifiProfile() {
             const payload = JSON.stringify({
                 ssid: document.getElementById('ssid').value,
