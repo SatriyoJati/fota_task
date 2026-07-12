@@ -10,20 +10,36 @@ Tools :
 - Vscode
 
 Partition Table 
+
 ![Alternative text](./assets/Partition_table.png)
 
 Here I use 3 app partitions : 
 - factory (for failsafe)
 - ota_0 
-- ota_1
+- ota_1 
 
 Using at least 2 app partitions (ota_0 and ota_1), are for safety and rollback usage.
+
+FOTA Task : 
+This firmware designed to perform robust ota with resumption. *Capabilities* : 
+1. Factory Reset Button , press > 5 seconds to go to Factory Mode/Recovery Mode
+2. Recovery Configuration using Web Interface by accessing esp32 c3 Wifi Acccess Point : 
+- Insert Wifi Credentials stored in NVS to connect to wifi as STA 
+- Manual Action Firmware Update
+3. OTA with Resumption. Utilizing NVS storage to store last write bytes image.
+4. Led Indicator : 
+    - Double blink : Recovery Mode
+    - Fast blink : OTA Update Process Indicator
+    - Normal blink : Normal Running app
+5. Rollback Mechanism , Reporting via Web. or Telemetry.
+6. Support HTTPS firmware Update.
+
 
 ### Files and Directories : 
 | Files/Folder | Explanation | Comments |
 | -------- | -------- | -------- |
-| /main  | main progam  | Row 1 C  |
-| /components  | component modules  | Row 2 C  |
+| /main  | main progam  |  |
+| /components  | component modules  |  |
 | /assets  |  image used in README.md |   |
 | /web  |  contains index.hmtl for Recovery Config  |
 | custom_partition.csv  |  custom partition table contain factory, ota_0 , ota_1  |
@@ -34,24 +50,31 @@ Using at least 2 app partitions (ota_0 and ota_1), are for safety and rollback u
 ### Components directory : 
 | Files/Folder | Explanation | Comments |
 | -------- | -------- | -------- |
-| /boardled  | driver board led  | Row 1 C  |
-| /config_portal_ap  | http server and webportal  | Row 2 C  |
+| /boardled  | driver board led  |   |
+| /config_portal_ap  | http server and webportal  |  |
 | /ota_app  |  handle ota task |   |
 | /task_simulation  |  telemetry, wathcdog, ota & config  |
 | wifi_ble_provisioning  |  NOT USED  |
 
 
-## the OTA state machine / flow
+## OTA state machine / flow
 
 ![Alternative text](./assets/TASK.png)
+
+I use online tool [Visual Diagram Online Web](https://online.visual-paradigm.com/diagrams/features/state-machine-diagram-software/) to create this diagram. Cant get rid watermark on top right corner.
+
 ![Alternative text](./assets/WebPortal.png)
+
+This is the webportal if firmware in factory mode.
+There are three Tabs : 
+System Status Containing Current Firmware
 
 ## How Rollback Works 
 
-The rollback mechanism lies in this function, since I use native ota API. 
+The rollback mechanism lies in this function `void run_ota_logic(void)` called in `hello_world_main.c`, since I use native ota API. 
 
-1. First , if image cant reboot then , Based on the state machine above, from previous OTA process the firmware is marked `ESP_OTA_IMAGE_PENDING`. 
-Then since it can boot then it will be marked as `ABORTED`. Then in next booting , bootloader will choose other than this image. It could be factory if no other ota_x available or other ota_x if it has `VALID` mark.
+1. First , if firmware image can't be rebooted then , Based on the state machine picture above, from the previous OTA process, the firmware is marked as `ESP_OTA_IMAGE_PENDING`. 
+Then since it can't boot then it will be marked as `ABORTED`. Then in next booting , bootloader will choose other than this image. It could be factory if no other ota_x available or other ota_x if it has `VALID` mark.
 
 2. If lets say it can boot, this is marked as `ESP_OTA_IMAGE_PENDING_VERIFY` then we perform validation logic.
 
@@ -123,5 +146,3 @@ void run_ota_logic(void) {
 | `NVS_KEY_PASS`       | `wifi_pass`         | Key for storing the WiFi network password          |
 | `NVS_OTA_NAMESPACE`  | `stored_ota`        | Namespace used to store OTA update information     |
 | `NVS_KEY_OFFSET`     | `bytes_written`     | Key for tracking OTA update progress (byte offset) |
-
-
