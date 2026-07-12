@@ -21,14 +21,16 @@ static const char *TAG = "PORTAL_ENGINE";
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
 
+// Retry wifi counter
+uint8_t s_retry_num = 0;
+#define MAXIMUM_RETRY 5
+
 // Global buffer passed safely to your external module
 char global_ota_url_buffer[256] = {0};
 
-/*-----------------------------------------------------------------------------
- * 🛠️ External Module APIs Provided by You
- *---------------------------------------------------------------------------*/
-// extern void ota_perform_task(void *pvParameter);
-// extern void check_active_firmware(void);
+// forwared declareation 
+static void load_credentials_and_connect(void);
+
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
@@ -36,6 +38,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     // === STATION MODE EVENTS ===
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         ESP_LOGI(TAG, "Wi-Fi Station layer initialized.");
+        load_credentials_and_connect();
+        // esp_wifi_connect();
     } 
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
@@ -47,7 +51,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             event->reason == WIFI_REASON_NO_AP_FOUND) {
             ESP_LOGE(TAG, "Failed to join network. Please check credentials via the portal dashboard.");
         }
-        
+
+        if (s_retry_num < MAXIMUM_RETRY) {
+                esp_wifi_connect();
+                s_retry_num++;
+                ESP_LOGI(TAG, "Attempting connection to local AP (%d/%d)", s_retry_num, MAXIMUM_RETRY);
+            } else {
+                ESP_LOGE(TAG, "Connection attempts exhausted. Keeping Access Portal open for corrections...");
+            } 
         // Optional: Trigger a reconnection retry attempt if desired
         // esp_wifi_connect();
     } 
@@ -55,6 +66,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Station successfully assigned IP: " IPSTR, IP2STR(&event->ip_info.ip));
         ESP_LOGI(TAG, "Device internet link active. Safe to trigger OTA download actions.");
+        s_retry_num = 0;
     }
     
     // === ACCESS POINT (AP) MODE EVENTS ===
@@ -131,7 +143,10 @@ static esp_err_t wifi_provision_post_handler(httpd_req_t *req)
         strlcpy((char *)wifi_sta_config.sta.password, pass->valuestring, sizeof(wifi_sta_config.sta.password));
 
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config));
-        ESP_ERROR_CHECK(esp_wifi_connect());
+
+        s_retry_num = 0;
+
+        esp_wifi_connect();
     }
 
     cJSON_Delete(root);
@@ -186,7 +201,7 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
 void ota_engine_init_portal(void)
 {
     /* 
-     * 🔍 NVS HEALTH CHECK: 
+     * NVS HEALTH CHECK: 
      * Verify that app_main successfully deployed NVS flash pools before initializing routes.
      */
     nvs_stats_t nvs_stats;
@@ -201,6 +216,7 @@ void ota_engine_init_portal(void)
     }
 
     ESP_LOGI(TAG, "NVS integration validation healthy. Launching tracking interfaces...");
+    ESP_ERROR_CHECK(esp_netif_init()); 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
@@ -209,10 +225,9 @@ void ota_engine_init_portal(void)
     
     check_active_firmware();
 
-    ESP_ERROR_CHECK(esp_netif_init()); 
 
     /* 
-     * 🔍 EARLY DIAGNOSTIC INTEGRATION:
+     * EARLY DIAGNOSTIC INTEGRATION:
      * Invokes your external verification utility to audit health metrics.
      */
 
@@ -222,13 +237,26 @@ void ota_engine_init_portal(void)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        wifi_country_t country_config = {
+        .cc = "ID",                          // Indonesia country code
+        .schan = 1,                          // Start at channel 1
+        .nchan = 13,                         // Support up to channel 13
+        .max_tx_power = 20,                  
+        .policy = WIFI_COUNTRY_POLICY_AUTO   // Auto-hop SoftAP channel to match STA
+    };
+    
+    esp_err_t err = esp_wifi_set_country(&country_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set Indonesian country config: %s", esp_err_to_name(err));
+    }
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
 
     wifi_config_t wifi_ap_config = {
         .ap = {
             .ssid = "ESP32C3_Portal",
             .ssid_len = strlen("ESP32C3_Portal"),
-            .channel = 0,
+            .channel = 1,
             .max_connection = 4,
             .authmode = WIFI_AUTH_OPEN
         },
@@ -260,6 +288,6 @@ void ota_engine_init_portal(void)
     }
 
     // 3. Process checking structural key database configurations on bootup 
-    load_credentials_and_connect();
+    
 }
 

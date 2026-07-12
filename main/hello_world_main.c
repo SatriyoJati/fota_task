@@ -47,7 +47,7 @@ void simple_task_feeding_watchdog(void *pvParameters) {
         // Feeding
         critical_loop_heartbeat = true;
 
-        vTaskDelay(pdMS_TO_TICKS(250)); // Run twice a second
+        vTaskDelay(pdMS_TO_TICKS(500)); // Run twice a second
     }
 }
 
@@ -250,10 +250,10 @@ void run_factory_logic(void) {
     recovery_blink(); // Blink LED to indicate factory mode
     ota_engine_init_portal();
 
-    while(1) {
-        // Factory loop logic
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    // while(1) {
+    //     // Factory loop logic
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
 }
 
 void run_ota_logic(void) {
@@ -292,12 +292,12 @@ void run_ota_logic(void) {
                 // CRITICAL STEP: Permanently validate the app and cancel the pending rollback!
                 esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
                 if (err == ESP_OK) {
-                    ESP_LOGI(TAG, "🏆 SUCCESS: Stability period met! New firmware locked in permanently.");
+                    ESP_LOGI(TAG, "SUCCESS: Stability period met! New firmware locked in permanently.");
                 } else {
                     ESP_LOGE(TAG, "Failed to confirm validity flag: %s", esp_err_to_name(err));
                 }
             } else {
-                ESP_LOGE(TAG, "🚨 Self-checks failed during stability period! Forcing manual rollback...");
+                ESP_LOGE(TAG, "Self-checks failed during stability period! Forcing manual rollback...");
                 // If your test fails, you can force an instant rollback instead of waiting
                 esp_ota_mark_app_invalid_rollback_and_reboot();
             }
@@ -306,8 +306,8 @@ void run_ota_logic(void) {
 
     normal_blink(); // Blink LED to indicate normal operation
     run_simulation_tasks(); // Start the simulation tasks for telemetry and monitoring
-    while(1) {
-        // OTA loop logic
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    // while(1) {
+    //     // OTA loop logic
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
 }
