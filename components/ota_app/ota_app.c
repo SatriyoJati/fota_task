@@ -14,7 +14,7 @@
 #include "esp_https_ota.h"
 #include "esp_log.h"
 #include "ota_app.h"
-
+#include "boardled.h"
 
 #define TAG "OTA_APP"
 
@@ -214,6 +214,7 @@ static void ota_run_task(void *pvParameter) {
     int last_percentage = -1;
     int chunk_counter = 0;
 
+    ota_led_indicator_start(); // Start LED indicator for OTA progress
     while(1) {
         err = esp_https_ota_perform(ota_handle);
         if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
@@ -222,13 +223,6 @@ static void ota_run_task(void *pvParameter) {
 
         // Fetch current cumulative bytes written (including previous attempts)
         int bytes_read = esp_https_ota_get_image_len_read(ota_handle);
-
-
-        // if (total_file_size > 0 && bytes_read >= total_file_size) {
-        //     ESP_LOGI(TAG, "All expected payload bytes downloaded (%d/%d). Breaking loop safely.", bytes_read, total_file_size);
-        //     err = ESP_OK; // Force successful break status
-        //     break;
-        // }
 
         // Save progress to NVS periodically (e.g., every 10 loop cycles) to protect Flash endurance
         if (chunk_counter++ % 10 == 0) {

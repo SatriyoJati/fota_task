@@ -55,7 +55,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "Station successfully assigned IP: " IPSTR, IP2STR(&event->ip_info.ip));
         ESP_LOGI(TAG, "Device internet link active. Safe to trigger OTA download actions.");
-        toggle_fast();
     }
     
     // === ACCESS POINT (AP) MODE EVENTS ===
@@ -190,7 +189,6 @@ void ota_engine_init_portal(void)
      * 🔍 NVS HEALTH CHECK: 
      * Verify that app_main successfully deployed NVS flash pools before initializing routes.
      */
-    setup_pin();
     nvs_stats_t nvs_stats;
     esp_err_t nvs_check = nvs_get_stats(NULL, &nvs_stats);
     

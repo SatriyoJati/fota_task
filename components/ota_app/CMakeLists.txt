@@ -6,5 +6,6 @@ idf_component_register(SRCS "ota_app.c"
                         nvs_flash
                         esp_wifi
                         spi_flash
+                        boardled
                     EMBED_TXTFILES "certs/ota_chaos_cert.pem"    
                     )

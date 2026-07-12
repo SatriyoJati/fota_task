@@ -37,6 +37,19 @@ static const char *TAG = "MAIN_APP";
 static QueueHandle_t gpio_evt_queue = NULL;
 static volatile uint8_t is_reset_button_pressed = 0;
 static volatile int64_t button_press_start_time = 0;
+
+// Watchdog simulation variable
+volatile bool critical_loop_heartbeat = true;
+
+void simple_task_feeding_watchdog(void *pvParameters) {
+    while (1) {        
+        // Feeding
+        critical_loop_heartbeat = true;
+
+        vTaskDelay(pdMS_TO_TICKS(250)); // Run twice a second
+    }
+}
+
 typedef struct {
     uint32_t pin;
     int level;
@@ -127,7 +140,6 @@ void reset_factory_task () {
                 if ((current_time - button_press_start_time) >= 5000000) {
                     ESP_LOGI(TAG, "Factory Reset Button Pressed!");
                     ESP_LOGI(TAG, "Starting Factory Reset...");
-                    gpio_set_level(BLINK_GPIO, 1);
                     trigger_factory_reset();
                 }
             } else {
@@ -190,6 +202,17 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
     verify_system_partitions_and_ota_data();
 
+    // Task feeding watchdog to ensure that the OTA validation loop can check for system health
+    xTaskCreatePinnedToCore(
+        &simple_task_feeding_watchdog, 
+        "simple_task_feeding_watchdog", 
+        2048,
+        NULL, 
+        6, 
+        NULL,
+        0
+    );
+
     xTaskCreatePinnedToCore(
         &reset_factory_task, 
         "reset_factory_task", 
@@ -199,6 +222,8 @@ void app_main(void)
         NULL,
         0
     );
+
+    setup_pin(); // Initialize LED GPIO for status indication
 
     // 2. Differentiate behavior based on subtype
     if (running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_FACTORY) {
@@ -214,9 +239,6 @@ void app_main(void)
         ESP_LOGE(TAG, "Unexpected partition subtype: %d", running_partition->subtype);
     }
 
-    // esp_restart();
-
-    // start_wifi_provisioning();
 }
 
 void run_factory_logic(void) {
@@ -224,6 +246,7 @@ void run_factory_logic(void) {
     // 1. Start Wi-Fi in Access Point (SoftAP) mode
     // 2. Launch an HTTP server to receive Wi-Fi credentials and new OTA firmware
     // 3. Keep a GPIO interrupt active for factory exit/reset conditions
+    recovery_blink(); // Blink LED to indicate factory mode
     ota_engine_init_portal();
 
     while(1) {
@@ -237,7 +260,50 @@ void run_ota_logic(void) {
     // 1. Check for available OTA updates
     // 2. Download and install updates if available
     // 3. Reboot if necessary
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t ota_state;
+    if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
 
+            // Validation logic: If the app is running correctly, mark it as valid to cancel rollback
+            ESP_LOGI(TAG, "App is in PENDING_VERIFY state. Starting stability checks...");
+            // 1. Simulate stability period 10 seconds.
+            vTaskDelay(pdMS_TO_TICKS(10000)); // Simulate some validation checks
+            bool system_checks_passed = true; 
+
+            // 2. Simulate a watchdog check . There will be simple task that will set critical_loop_heartbeat 
+            // to true to prevent the watchdog from triggering a rollback. If the task fails to set it, we will force a rollback.
+            for (int i = 0; i < 4; i++) {
+                vTaskDelay(pdMS_TO_TICKS(2500)); // Sleep for 2.5 second at a time
+        
+                    // Check if our critical loops are still alive and reporting
+                    if (!critical_loop_heartbeat) {
+                        ESP_LOGE(TAG, "CRITICAL WATCHDOG ERROR: Loop is frozen inside the 10s stability window!");
+                        
+                        // POINT 3: Application explicitly marks itself invalid and reboots!
+                        esp_ota_mark_app_invalid_rollback_and_reboot(); 
+                        
+                    }
+                    critical_loop_heartbeat = false; 
+            }
+
+            if (system_checks_passed) {
+                // CRITICAL STEP: Permanently validate the app and cancel the pending rollback!
+                esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+                if (err == ESP_OK) {
+                    ESP_LOGI(TAG, "🏆 SUCCESS: Stability period met! New firmware locked in permanently.");
+                } else {
+                    ESP_LOGE(TAG, "Failed to confirm validity flag: %s", esp_err_to_name(err));
+                }
+            } else {
+                ESP_LOGE(TAG, "🚨 Self-checks failed during stability period! Forcing manual rollback...");
+                // If your test fails, you can force an instant rollback instead of waiting
+                esp_ota_mark_app_invalid_rollback_and_reboot();
+            }
+        }
+    }
+
+    normal_blink(); // Blink LED to indicate normal operation
     while(1) {
         // OTA loop logic
         vTaskDelay(pdMS_TO_TICKS(1000));

@@ -47,6 +47,30 @@ static void led_task(void *pvParameters) {
                 gpio_set_level(LED_GPIO,1);
                 break;
 
+            case 4:
+                gpio_set_level(LED_GPIO, 0);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                gpio_set_level(LED_GPIO,1);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                break;
+            
+            case 5:
+                gpio_set_level(LED_GPIO, 0);
+                vTaskDelay(pdMS_TO_TICKS(200));
+                gpio_set_level(LED_GPIO,1);
+                vTaskDelay(pdMS_TO_TICKS(200));
+                break;
+
+            case 6:
+                for(int i = 0; i < 2; i++) {
+                    gpio_set_level(LED_GPIO, 0);
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                    gpio_set_level(LED_GPIO,1);
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                }   
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                break;
+
             default:
                 break;
         
@@ -63,7 +87,7 @@ void setup_pin()
     xTaskCreate(
         led_task,
         "led_task",
-        2048,
+        4096,
         NULL,
         1,
         &xTaskLedHandle
@@ -92,4 +116,22 @@ void toggle_fast()
 {
     uint8_t toggle_led_mode = 3;
     xQueueSend(xVariableQueue, &toggle_led_mode, portMAX_DELAY);
+}
+
+void normal_blink()
+{
+    uint8_t normal_blink_mode = 4;
+    xQueueSend(xVariableQueue, &normal_blink_mode, portMAX_DELAY);
+}
+
+void ota_led_indicator_start()
+{
+    uint8_t ota_mode = 5;
+    xQueueSend(xVariableQueue, &ota_mode, portMAX_DELAY);
+}
+
+void recovery_blink()
+{
+    uint8_t recovery_mode = 6;
+    xQueueSend(xVariableQueue, &recovery_mode, portMAX_DELAY);
 }
