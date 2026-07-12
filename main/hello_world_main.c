@@ -22,6 +22,7 @@
 #include "driver/gpio.h"
 #include "boardled.h"
 #include "ota_app.h"
+#include "task_simulation.h"
 
 #include "config_portal_ap.h"
 
@@ -304,6 +305,7 @@ void run_ota_logic(void) {
     }
 
     normal_blink(); // Blink LED to indicate normal operation
+    run_simulation_tasks(); // Start the simulation tasks for telemetry and monitoring
     while(1) {
         // OTA loop logic
         vTaskDelay(pdMS_TO_TICKS(1000));

@@ -34,6 +34,8 @@ This firmware designed to perform robust ota with resumption. *Capabilities* :
 5. Rollback Mechanism , Reporting via Web. or Telemetry.
 6. Support HTTPS firmware Update.
 
+### Demo Video 
+You may see demo video using this link : [Demo Running Using ESP32 C3 Supermini board](https://youtu.be/FZtewXbc2zw?si=ednhsGyTCblwL2Nn)
 
 ### Files and Directories : 
 | Files/Folder | Explanation | Comments |

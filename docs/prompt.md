@@ -6,3 +6,5 @@
 
 
 4. sorry i forgot to mention , the credentials stored in NVS with KEYS, and the ota task actually comes in component using esp idf style project
+
+5. Create simple python scripts to test firmware OTA much more similar to advanced https ota example on esp idf. It covers firmware update down connection etc.
