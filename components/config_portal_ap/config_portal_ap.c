@@ -13,6 +13,8 @@
 
 static const char *TAG = "PORTAL_ENGINE";
 
+#define AP_PASSWORD  "test12345"
+
 #define NVS_WIFI_NAMESPACE "wifi_store"
 #define NVS_KEY_SSID       "wifi_ssid"
 #define NVS_KEY_PASS       "wifi_pass"
@@ -256,9 +258,10 @@ void ota_engine_init_portal(void)
         .ap = {
             .ssid = "ESP32C3_Portal",
             .ssid_len = strlen("ESP32C3_Portal"),
+            .password = AP_PASSWORD,
             .channel = 1,
             .max_connection = 4,
-            .authmode = WIFI_AUTH_OPEN
+            .authmode = WIFI_AUTH_WPA2_PSK
         },
     };
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));

@@ -56,9 +56,9 @@ static void led_task(void *pvParameters) {
             
             case 5:
                 gpio_set_level(LED_GPIO, 0);
-                vTaskDelay(pdMS_TO_TICKS(200));
+                vTaskDelay(pdMS_TO_TICKS(50));
                 gpio_set_level(LED_GPIO,1);
-                vTaskDelay(pdMS_TO_TICKS(200));
+                vTaskDelay(pdMS_TO_TICKS(50));
                 break;
 
             case 6:
