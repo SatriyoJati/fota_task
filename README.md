@@ -1,6 +1,6 @@
 # Firmware Update Task
 
-NOTE : Upto submission date (Jul 12, 2026, 12:59 PM), all in main branch you may want to go to specific commit the latest before deadline is (`git commit hash : 5af2d6e` URL : [5af2d6e](https://github.com/SatriyoJati/fota_task/tree/5af2d6e7783c643906005f0b3185130338bc37e8)) on main branch, however I improved the code and fix the code and documentation , i put the changes and improvements on `improvements branch`. If you will better version of this app you may go to `improvements branch`. 
+NOTE : Upto submission date (Jul 12, 2026, 12:59 PM), all in main branch you may want to go to specific commit the latest before deadline is (`git commit hash : 5af2d6e` URL : [5af2d6e](https://github.com/SatriyoJati/fota_task/tree/5af2d6e7783c643906005f0b3185130338bc37e8)) on main branch, however I improved the code and fix the code and documentation , i put the changes and improvements on `improvements branch`. If you may want to see better version of this app you may go to `improvements branch`. 
 ## Highlevel Architecture
 
 System : 
