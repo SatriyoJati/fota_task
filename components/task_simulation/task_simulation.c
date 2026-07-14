@@ -7,6 +7,9 @@
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "mqtt_client.h"
+#include "ota_app.h"
+#include "wifi_stack.h"
+#include "cJSON.h"
 
 static const char *TAG = "MAIN";
 
@@ -14,10 +17,11 @@ static const char *TAG = "MAIN";
 #define TOPIC_OTA_TRIGGER    "device/ota/trigger"
 #define TOPIC_SYS_STATUS     "device/status/boot"
 #define TOPIC_DATA_STREAM    "device/data/stream"
-
+extern char global_ota_url_buffer[256];
 /* Simple Queue Packet for passing the Trigger String */
 typedef struct {
-    char payload[32];
+    char command[32];  // Command string (e.g., "START_UPDATE")
+    char url[256];
 } OtaMessage_t;
 
 static QueueHandle_t xOtaQueue = NULL;
@@ -52,13 +56,46 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             /* Route target message payloads to the OTA Task Queue */
             if (strncmp(event->topic, TOPIC_OTA_TRIGGER, event->topic_len) == 0) {
                 OtaMessage_t msg;
-                int len = event->data_len < 31 ? event->data_len : 31;
-                memcpy(msg.payload, event->data, len);
-                msg.payload[len] = '\0';
+                char *payload = malloc(event->data_len + 1);
+                strncpy(payload, event->data, event->data_len);
+                payload[event->data_len] = '\0';
+
+                cJSON *root = cJSON_Parse(payload);
+            if (root != NULL) {
+                // 3. Extract a specific key (e.g., "temperature")
+                cJSON *url = cJSON_GetObjectItem(root, "url");
                 
+                if (url != NULL && cJSON_IsString(url)) {
+                    const char *url_string = url->valuestring;
+                    ESP_LOGI("MQTT", "Received URL: %s", url_string);
+                    strncpy(msg.url, url_string, sizeof(msg.url) - 1);
+                    msg.url[sizeof(msg.url) - 1] = '\0';
+                }
+
+                cJSON *command = cJSON_GetObjectItem(root, "command");
+                if (command != NULL && cJSON_IsString(command)) {   
+                    const char *command_string = command->valuestring;
+                    ESP_LOGI("MQTT", "Received Command: %s", command_string);
+                    strncpy(msg.command, command_string, sizeof(msg.command) - 1);
+                    msg.command[sizeof(msg.command) - 1] = '\0'; // Ensure null-termination
+                    strncpy(global_ota_url_buffer, msg.url, sizeof(global_ota_url_buffer) - 1);
+                    global_ota_url_buffer[sizeof(global_ota_url_buffer) - 1] = '\0'; // Ensure null-termination
+                } else {
+                    ESP_LOGE("MQTT", "Command key missing or not a string.");
+                }
+
+                // 4. Clean up the cJSON object
+                cJSON_Delete(root);
+                } else {
+                    ESP_LOGE("MQTT", "Failed to parse JSON. Error at: %s", cJSON_GetErrorPtr());
+                }
+
+                free(payload);
                 if (xOtaQueue != NULL) {
                     xQueueSend(xOtaQueue, &msg, 0);
                 }
+                break;
+                
             }
             break;
         default:
@@ -74,16 +111,12 @@ static void vOtaConfigTask(void *pvParameters) {
     for (;;) {
         /* Topic 1 Trigger: Blocks indefinitely until a payload hits the queue */
         if (xQueueReceive(xOtaQueue, &received_msg, portMAX_DELAY) == pdPASS) {
-            ESP_LOGW("OTA_TASK", "Received trigger command string: [%s]", received_msg.payload);
+            ESP_LOGW("OTA_TASK", "Received trigger command string: [%s]", received_msg.command);
             
-            if (strcmp(received_msg.payload, "START_UPDATE") == 0) {
+            if (strcmp(received_msg.command, "START_UPDATE") == 0) {
                 ESP_LOGE("OTA_TASK", "--- CRITICAL ACTION REQUIRED: Triggering actual OTA sequence now! ---");
                 
-                /* 
-                 * PLACE YOUR ACTUAL OTA FUNCTIONS HERE 
-                 * e.g., esp_http_client_config_t config = { ... }; 
-                 *       esp_https_ota(&config);
-                 */
+                ota_perform_task();
             } else {
                 ESP_LOGI("OTA_TASK", "Ignored unexpected payload value.");
             }
@@ -142,9 +175,10 @@ void run_simulation_tasks(void) {
         ESP_LOGE(TAG, "Queue creation failed!");
         return;
     }
+    wifi_stack_connect();
 
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://://hivemq.com", 
+        .broker.address.uri = "mqtt://broker.hivemq.com:1883", 
     };
 
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
