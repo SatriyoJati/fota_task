@@ -95,3 +95,6 @@ cleanup:
 ```
 
 But this is introduction new problem since I actually depend on FLASH writing for tracking image downloaded. 
+
+You may see this image : 
+![Activity Diagram FOTA](assets/architecture.png)
